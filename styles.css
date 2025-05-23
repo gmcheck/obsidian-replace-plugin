@@ -6,3 +6,23 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+/* 查找结果高亮样式 */
+.find-match-highlight {
+	background-color: rgba(0, 0, 0, 0.5); /* 透明度从0.3提升到0.5 */
+	border-radius: 3px;
+	transition: all 0.3s ease;
+}
+
+/* 当前选中项的高亮样式 */
+.find-match-highlight.current {
+	background-color: rgba(255, 140, 0, 0.7); /* 橙色加深且更醒目 */
+	box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.9);
+	position: relative;
+	z-index: 1;
+}
+
+/* 悬停增强效果 */
+.find-match-highlight:hover {
+	background-color: rgba(0, 0, 0, 0.6);
+}
