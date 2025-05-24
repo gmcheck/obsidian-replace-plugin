@@ -8,5 +8,6 @@ declare module "obsidian" {
 			class?: string;
 			attributes?: Record<string, string>;
 		}): void;
+		clearHighlights(): void;
 	}
 }

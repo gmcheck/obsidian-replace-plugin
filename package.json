@@ -1,6 +1,6 @@
 {
-	"name": "obsidian-replace-plugin",
-	"version": "1.0.0",
+	"name": "find-replace-plugin",
+	"version": "1.0.1",
 	"description": "Find and replace with regex support for Obsidian",
 	"main": "main.js",
 	"scripts": {
