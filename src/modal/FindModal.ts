@@ -120,13 +120,15 @@ export class FindModal extends Modal {
 		return matches;
 	}
 
-	private highlightAllMatches(editor: Editor) {
+	private async highlightAllMatches(editor: Editor) {
 		// // 移除旧的高亮
 		this.removeAllHighlights(editor);
 		const content = editor.getValue();
 		// 先获取view引用
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
+		// 等待编辑器完成渲染
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		this.matches.forEach((match) => {
 			const highlightedElement = this.createHighlightElement(
