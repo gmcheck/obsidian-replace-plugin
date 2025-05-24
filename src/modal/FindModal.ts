@@ -12,6 +12,14 @@ import "prismjs/themes/prism.css"; // 引入 Prism.js 的样式
 
 // import type FindReplacePlugin from "main";
 
+// 在文件顶部添加类型扩展
+declare module "obsidian" {
+	interface Editor {
+		cm: any; // 或更具体的CodeMirror.Editor类型
+		containerEl: HTMLElement;
+	}
+}
+
 export class FindModal extends Modal {
 	private searchTerm: string = "";
 	private useRegex: boolean;
@@ -113,11 +121,12 @@ export class FindModal extends Modal {
 	}
 
 	private highlightAllMatches(editor: Editor) {
-		// 移除旧的高亮
+		// // 移除旧的高亮
 		this.removeAllHighlights(editor);
 		const content = editor.getValue();
-		const codeEl = document.createElement("code");
-		codeEl.textContent = content;
+		// 先获取view引用
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
 
 		this.matches.forEach((match) => {
 			const highlightedElement = this.createHighlightElement(
@@ -126,6 +135,27 @@ export class FindModal extends Modal {
 				match.length
 			);
 			this.allHighlights.push(highlightedElement);
+
+			console.log("插入前DOM检查:", {
+				cmContent:
+					view?.contentEl.querySelector(".cm-content")?.outerHTML,
+				highlights:
+					document.querySelectorAll(".search-highlight").length,
+			});
+
+			const lineNum = editor.offsetToPos(match.pos).line;
+			const lineEl = view.contentEl.querySelector(
+				`.cm-line:nth-child(${lineNum + 1})`
+			);
+			if (lineEl) {
+				lineEl.appendChild(highlightedElement);
+
+				console.log("插入后DOM检查:", {
+					parent: lineEl.outerHTML,
+					highlights:
+						document.querySelectorAll(".search-highlight").length,
+				});
+			}
 		});
 	}
 
@@ -134,25 +164,27 @@ export class FindModal extends Modal {
 		pos: number,
 		length: number
 	): HTMLElement {
-		const before = content.slice(0, pos);
-		const matchText = content.slice(pos, pos + length);
-		const after = content.slice(pos + length);
+		const highlightSpan = document.createElement("span");
+		highlightSpan.className = "search-highlight";
+		highlightSpan.textContent = content.substring(pos, pos + length);
 
-		const wrapper = document.createElement("span");
-		const codeEl = document.createElement("code");
-		codeEl.innerHTML =
-			before +
-			`<span class="prism-highlight">${matchText}</span>` +
-			after;
-		wrapper.appendChild(codeEl);
+		// 添加内联样式作为备份
+		highlightSpan.style.cssText = `
+        background-color: yellow !important;
+        color: black !important;
+        padding: 0 2px;
+        border-radius: 2px;
+        display: inline !important;
+        position: relative;
+        z-index: 9999;
+    `;
 
-		// 使用 Prism.js 高亮代码
-		const codeElement = wrapper.querySelector("code");
-		if (codeElement) {
-			Prism.highlightElement(codeElement);
-		}
+		console.log("创建的高亮元素样式:", {
+			element: highlightSpan,
+			computedStyle: window.getComputedStyle(highlightSpan),
+		});
 
-		return wrapper;
+		return highlightSpan;
 	}
 
 	private removeAllHighlights(editor: Editor) {
@@ -171,12 +203,36 @@ export class FindModal extends Modal {
 		if (this.currentHighlight) {
 			this.currentHighlight.remove();
 		}
-		// 添加新的当前高亮
+
+		// 创建新高亮元素
 		this.currentHighlight = this.createHighlightElement(
 			editor.getValue(),
 			match.pos,
 			match.length
 		);
+
+		// 关键修改：将高亮元素插入编辑器DOM
+		// 改进的插入方式 - 直接插入到编辑器视图容器
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view) {
+			const cmContent = view.contentEl.querySelector(".cm-content");
+			const cmLines = view.contentEl.querySelector(".cm-line");
+
+			if (cmLines) {
+				// 计算匹配位置对应的行
+				const line = editor.offsetToPos(match.pos).line;
+				const lineEl = cmLines.parentElement?.children[line];
+
+				if (lineEl) {
+					lineEl.appendChild(this.currentHighlight);
+					console.log("高亮元素已插入到行:", lineEl);
+				}
+			} else if (cmContent) {
+				cmContent.appendChild(this.currentHighlight);
+				console.log("高亮元素插入到cm-content");
+			}
+		}
+
 		this.scrollToMatch(editor, match.pos, match.length);
 	}
 

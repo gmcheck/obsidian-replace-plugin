@@ -47,10 +47,10 @@ if (prod) {
 	process.exit(0);
 } else {
 	// 开发模式下复制 styles.css 文件
-	// copyFileSync(
-	// 	"styles.css",
-	// 	"C:\\Users\\Lenovo\\AppData\\Local\\Programs\\obsidian\\.obsidian\\plugins\\obsidian-replace-plugin\\styles.css"
-	// );
+	copyFileSync(
+		"styles.css",
+		"C:\\Users\\Lenovo\\AppData\\Local\\Programs\\obsidian\\.obsidian\\plugins\\obsidian-replace-plugin\\styles.css"
+	);
 
 	await context.watch();
 }

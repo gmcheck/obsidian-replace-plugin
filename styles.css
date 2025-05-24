@@ -7,7 +7,11 @@ If your plugin does not need CSS, delete this file.
 
 */
 
-.prism-highlight {
-	background-color: yellow;
-	/* 可根据需求调整样式 */
+.search-highlight {
+	background-color: yellow !important;
+	color: black !important;
+	padding: 0 2px;
+	border-radius: 2px;
+	display: inline !important;
+	position: relative;
 }
