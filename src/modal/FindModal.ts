@@ -1,4 +1,12 @@
-import { App, MarkdownView, Modal, Setting, Notice, Editor } from "obsidian";
+import {
+	App,
+	MarkdownView,
+	Modal,
+	Setting,
+	Notice,
+	Editor,
+	EditorPosition,
+} from "obsidian";
 import type FindReplacePlugin from "main";
 
 export class FindModal extends Modal {
@@ -7,9 +15,10 @@ export class FindModal extends Modal {
 	private matches: { pos: number; length: number }[] = [];
 	private currentIndex: number = -1;
 	private countSetting: Setting;
-	private currentHighlight: any; // 新增：跟踪当前高亮装饰
+	private currentHighlight: { clear: () => void } | null = null;
+	private allHighlights: { clear: () => void }[] = [];
 
-	constructor(app: App, private plugin: any) {
+	constructor(app: App, private plugin: FindReplacePlugin) {
 		super(app);
 		this.useRegex = this.plugin?.settings?.useRegex || false;
 	}
@@ -55,6 +64,14 @@ export class FindModal extends Modal {
 		);
 	}
 
+	private updateCount() {
+		if (this.countSetting && this.countSetting.controlEl) {
+			const button = this.countSetting.controlEl.querySelector("button");
+			if (button) {
+				button.setText(`Count: ${this.matches.length}`);
+			}
+		}
+	}
 	private findAll() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView || !this.searchTerm.trim()) {
@@ -74,18 +91,24 @@ export class FindModal extends Modal {
 		}
 	}
 
-	private findInEditor(editor: any): { pos: number; length: number }[] {
+	private findInEditor(editor: Editor): { pos: number; length: number }[] {
 		const content = editor.getValue();
 		const matches: { pos: number; length: number }[] = [];
 		let match;
 
 		if (this.useRegex) {
-			const regex = new RegExp(this.searchTerm, "g");
-			while ((match = regex.exec(content)) !== null) {
-				matches.push({
-					pos: match.index,
-					length: match[0].length,
-				});
+			try {
+				const regex = new RegExp(this.searchTerm, "g");
+				while ((match = regex.exec(content)) !== null) {
+					matches.push({
+						pos: match.index,
+						length: match[0].length,
+					});
+				}
+			} catch (error) {
+				new Notice("Invalid regular expression");
+				console.error("Invalid regex:", error);
+				return [];
 			}
 		} else {
 			let pos = 0;
@@ -98,6 +121,22 @@ export class FindModal extends Modal {
 			}
 		}
 		return matches;
+	}
+
+	private scrollToMatch(editor: Editor, pos: number, length: number) {
+		try {
+			const from = editor.offsetToPos(pos);
+			const to = editor.offsetToPos(pos + length);
+			// 先滚动到位置
+			editor.scrollIntoView({ from, to });
+			// 然后计算居中位置
+			const cursor = editor.getCursor();
+			editor.setCursor(from);
+			editor.scrollIntoView({ from: cursor, to: cursor }, true);
+		} catch (error) {
+			console.error("Error scrolling to match:", error);
+			new Notice("Failed to scroll to the match.");
+		}
 	}
 
 	private findNext() {
@@ -118,6 +157,8 @@ export class FindModal extends Modal {
 		}
 
 		this.currentIndex = (this.currentIndex + 1) % this.matches.length;
+		const match = this.matches[this.currentIndex];
+		this.scrollToMatch(activeView.editor, match.pos, match.length);
 		this.highlightCurrentMatch(activeView.editor);
 	}
 
@@ -140,79 +181,70 @@ export class FindModal extends Modal {
 
 		this.currentIndex =
 			(this.currentIndex - 1 + this.matches.length) % this.matches.length;
+		const match = this.matches[this.currentIndex];
+		this.scrollToMatch(activeView.editor, match.pos, match.length);
 		this.highlightCurrentMatch(activeView.editor);
 	}
 
-	private highlightAllMatches(editor: any) {
-		editor.clearHighlights(); // 仅在查找全部时清除旧高亮
-		this.matches.forEach((match) => {
-			this.addHighlightDecoration(editor, match.pos, match.length);
-		});
-	}
-
-	private highlightCurrentMatch(editor: any) {
-		if (this.currentIndex < 0 || this.currentIndex >= this.matches.length)
-			return;
-
-		const match = this.matches[this.currentIndex];
-		// 移除旧的当前高亮装饰
-		if (this.currentHighlight) {
-			editor.removeHighlighter(this.currentHighlight);
-		}
-		// 添加新的当前高亮（不清除其他匹配高亮）
-		this.currentHighlight = this.addCurrentHighlightDecoration(
-			editor,
-			match.pos,
-			match.length
-		);
-		this.scrollToMatch(editor, match.pos, match.length);
-	}
-
-	private scrollToMatch(editor: any, pos: number, length: number) {
-		const from = editor.offsetToPos(pos);
-		const to = editor.offsetToPos(pos + length);
-		// 修正参数格式为对象形式，确保正确滚动定位
-		editor.scrollIntoView({ from, to }, { at: "center" });
-	}
-
 	private addCurrentHighlightDecoration(
-		editor: any,
+		editor: Editor,
 		pos: number,
 		length: number
-	) {
+	): { clear: () => void } {
 		const from = editor.offsetToPos(pos);
 		const to = editor.offsetToPos(pos + length);
-		// 返回高亮装饰以便后续管理
-		return editor.addHighlighter({
-			from,
-			to,
-			class: "find-current-highlight",
+		const mark = (editor as any).getDoc().markText(from, to, {
+			className: "find-current-highlight",
+			clearWhenEmpty: false,
+		});
+		return {
+			clear: () => mark.clear(),
+		};
+	}
+
+	private addHighlightDecoration(
+		editor: Editor,
+		pos: number,
+		length: number
+	): { clear: () => void } {
+		const from = editor.offsetToPos(pos);
+		const to = editor.offsetToPos(pos + length);
+		const mark = (editor as any).getDoc().markText(from, to, {
+			className: "find-match-highlight",
+			clearWhenEmpty: false,
+		});
+		return {
+			clear: () => mark.clear(),
+		};
+	}
+
+	private highlightAllMatches(editor: Editor) {
+		this.allHighlights.forEach((h) => h.clear());
+		this.allHighlights = [];
+
+		this.matches.forEach((match) => {
+			const decoration = this.addHighlightDecoration(
+				editor,
+				match.pos,
+				match.length
+			);
+			this.allHighlights.push(decoration);
 		});
 	}
 
-	private addHighlightDecoration(editor: any, pos: number, length: number) {
-		const from = editor.offsetToPos(pos);
-		const to = editor.offsetToPos(pos + length);
-
-		editor.addHighlighter({
-			from,
-			to,
-			class: "find-match-highlight",
-		});
-	}
-
-	private updateCount() {
-		if (this.countSetting) {
-			this.countSetting.controlEl
-				.querySelector("button")!
-				.setText(`Count: ${this.matches.length}`);
+	private highlightCurrentMatch(editor: Editor) {
+		if (this.currentHighlight) {
+			this.currentHighlight.clear();
 		}
 	}
 
 	onClose() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
-			activeView.editor.clearHighlights();
+			this.allHighlights.forEach((decoration) => decoration.clear());
+			if (this.currentHighlight) {
+				this.currentHighlight.clear();
+			}
 		}
 		this.contentEl.empty();
 	}
