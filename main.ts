@@ -7,9 +7,20 @@ import {
 	Setting,
 	PluginSettingTab,
 } from "obsidian";
+
+import { promises as fs } from "fs";
+import * as path from "path";
+
 import { FindModal } from "src/modal/FindModal";
 import { ReplaceModal } from "src/modal/ReplaceModal";
 import { FindReplaceSettingTab } from "src/tab/FindReplaceSettingTab";
+
+// 添加 Plugin 类的类型声明
+declare module "obsidian" {
+	interface Plugin {
+		addStyleSheet(css: string): void;
+	}
+}
 
 interface FindReplaceSettings {
 	useRegex: boolean;
@@ -27,6 +38,16 @@ export default class FindReplacePlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+		// 加载 CSS 文件
+		try {
+			const pluginDir = this.manifest.dir || __dirname; // 确保 pluginDir 有值
+			const cssFilePath = path.join(pluginDir, "styles.css");
+			console.error("css 文件目录为： ", cssFilePath);
+			const cssContent = await fs.readFile(cssFilePath, "utf-8");
+			this.addStyleSheet(cssContent);
+		} catch (error) {
+			console.error("加载并添加 CSS 文件失败:", error);
+		}
 
 		this.addCommand({
 			id: "find-in-current-file",

@@ -7,7 +7,10 @@ import {
 	Editor,
 	EditorPosition,
 } from "obsidian";
-import type FindReplacePlugin from "main";
+import * as Prism from "prismjs";
+import "prismjs/themes/prism.css"; // 引入 Prism.js 的样式
+
+// import type FindReplacePlugin from "main";
 
 export class FindModal extends Modal {
 	private searchTerm: string = "";
@@ -15,10 +18,10 @@ export class FindModal extends Modal {
 	private matches: { pos: number; length: number }[] = [];
 	private currentIndex: number = -1;
 	private countSetting: Setting;
-	private currentHighlight: { clear: () => void } | null = null;
-	private allHighlights: { clear: () => void }[] = [];
+	private currentHighlight: HTMLElement | null = null; // 修改类型，用于跟踪当前高亮元素
+	private allHighlights: HTMLElement[] = []; // 修改类型，用于跟踪所有匹配的高亮元素
 
-	constructor(app: App, private plugin: FindReplacePlugin) {
+	constructor(app: App, private plugin: any) {
 		super(app);
 		this.useRegex = this.plugin?.settings?.useRegex || false;
 	}
@@ -64,14 +67,6 @@ export class FindModal extends Modal {
 		);
 	}
 
-	private updateCount() {
-		if (this.countSetting && this.countSetting.controlEl) {
-			const button = this.countSetting.controlEl.querySelector("button");
-			if (button) {
-				button.setText(`Count: ${this.matches.length}`);
-			}
-		}
-	}
 	private findAll() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView || !this.searchTerm.trim()) {
@@ -97,18 +92,12 @@ export class FindModal extends Modal {
 		let match;
 
 		if (this.useRegex) {
-			try {
-				const regex = new RegExp(this.searchTerm, "g");
-				while ((match = regex.exec(content)) !== null) {
-					matches.push({
-						pos: match.index,
-						length: match[0].length,
-					});
-				}
-			} catch (error) {
-				new Notice("Invalid regular expression");
-				console.error("Invalid regex:", error);
-				return [];
+			const regex = new RegExp(this.searchTerm, "g");
+			while ((match = regex.exec(content)) !== null) {
+				matches.push({
+					pos: match.index,
+					length: match[0].length,
+				});
 			}
 		} else {
 			let pos = 0;
@@ -123,16 +112,80 @@ export class FindModal extends Modal {
 		return matches;
 	}
 
-	private scrollToMatch(editor: Editor, pos: number, length: number) {
+	private highlightAllMatches(editor: Editor) {
+		// 移除旧的高亮
+		this.removeAllHighlights(editor);
+		const content = editor.getValue();
+		const codeEl = document.createElement("code");
+		codeEl.textContent = content;
+
+		this.matches.forEach((match) => {
+			const highlightedElement = this.createHighlightElement(
+				content,
+				match.pos,
+				match.length
+			);
+			this.allHighlights.push(highlightedElement);
+		});
+	}
+
+	private createHighlightElement(
+		content: string,
+		pos: number,
+		length: number
+	): HTMLElement {
+		const before = content.slice(0, pos);
+		const matchText = content.slice(pos, pos + length);
+		const after = content.slice(pos + length);
+
+		const wrapper = document.createElement("span");
+		const codeEl = document.createElement("code");
+		codeEl.innerHTML =
+			before +
+			`<span class="prism-highlight">${matchText}</span>` +
+			after;
+		wrapper.appendChild(codeEl);
+
+		// 使用 Prism.js 高亮代码
+		const codeElement = wrapper.querySelector("code");
+		if (codeElement) {
+			Prism.highlightElement(codeElement);
+		}
+
+		return wrapper;
+	}
+
+	private removeAllHighlights(editor: Editor) {
+		this.allHighlights.forEach((highlight) => {
+			highlight.remove();
+		});
+		this.allHighlights = [];
+	}
+
+	private highlightCurrentMatch(editor: Editor) {
+		if (this.currentIndex < 0 || this.currentIndex >= this.matches.length)
+			return;
+
+		const match = this.matches[this.currentIndex];
+		// 移除旧的当前高亮
+		if (this.currentHighlight) {
+			this.currentHighlight.remove();
+		}
+		// 添加新的当前高亮
+		this.currentHighlight = this.createHighlightElement(
+			editor.getValue(),
+			match.pos,
+			match.length
+		);
+		this.scrollToMatch(editor, match.pos, match.length);
+	}
+
+	private scrollToMatch(editor: any, pos: number, length: number) {
 		try {
 			const from = editor.offsetToPos(pos);
 			const to = editor.offsetToPos(pos + length);
-			// 先滚动到位置
+			// 移除 at 属性，直接传入 from 和 to
 			editor.scrollIntoView({ from, to });
-			// 然后计算居中位置
-			const cursor = editor.getCursor();
-			editor.setCursor(from);
-			editor.scrollIntoView({ from: cursor, to: cursor }, true);
 		} catch (error) {
 			console.error("Error scrolling to match:", error);
 			new Notice("Failed to scroll to the match.");
@@ -186,64 +239,20 @@ export class FindModal extends Modal {
 		this.highlightCurrentMatch(activeView.editor);
 	}
 
-	private addCurrentHighlightDecoration(
-		editor: Editor,
-		pos: number,
-		length: number
-	): { clear: () => void } {
-		const from = editor.offsetToPos(pos);
-		const to = editor.offsetToPos(pos + length);
-		const mark = (editor as any).getDoc().markText(from, to, {
-			className: "find-current-highlight",
-			clearWhenEmpty: false,
-		});
-		return {
-			clear: () => mark.clear(),
-		};
-	}
-
-	private addHighlightDecoration(
-		editor: Editor,
-		pos: number,
-		length: number
-	): { clear: () => void } {
-		const from = editor.offsetToPos(pos);
-		const to = editor.offsetToPos(pos + length);
-		const mark = (editor as any).getDoc().markText(from, to, {
-			className: "find-match-highlight",
-			clearWhenEmpty: false,
-		});
-		return {
-			clear: () => mark.clear(),
-		};
-	}
-
-	private highlightAllMatches(editor: Editor) {
-		this.allHighlights.forEach((h) => h.clear());
-		this.allHighlights = [];
-
-		this.matches.forEach((match) => {
-			const decoration = this.addHighlightDecoration(
-				editor,
-				match.pos,
-				match.length
-			);
-			this.allHighlights.push(decoration);
-		});
-	}
-
-	private highlightCurrentMatch(editor: Editor) {
-		if (this.currentHighlight) {
-			this.currentHighlight.clear();
+	private updateCount() {
+		if (this.countSetting) {
+			this.countSetting.controlEl
+				.querySelector("button")!
+				.setText(`Count: ${this.matches.length}`);
 		}
 	}
 
 	onClose() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
-			this.allHighlights.forEach((decoration) => decoration.clear());
+			this.removeAllHighlights(activeView.editor);
 			if (this.currentHighlight) {
-				this.currentHighlight.clear();
+				this.currentHighlight.remove();
 			}
 		}
 		this.contentEl.empty();

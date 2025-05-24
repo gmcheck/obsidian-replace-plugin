@@ -7,10 +7,7 @@ If your plugin does not need CSS, delete this file.
 
 */
 
-.find-match-highlight {
-	background-color: #ffff99; /* 普通匹配高亮颜色 */
-}
-
-.find-current-highlight {
-	background-color: #ffd700; /* 当前匹配高亮颜色（更突出） */
+.prism-highlight {
+	background-color: yellow;
+	/* 可根据需求调整样式 */
 }
