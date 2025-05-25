@@ -1,5 +1,6 @@
 import { App, MarkdownView, Modal, Setting, Notice, Editor } from "obsidian";
 import type FindReplacePlugin from "main";
+import { findInEditor, scrollToMatch, MatchResult } from "../common/textUtils";
 
 const modalStyle = `
 .replace-replace-modal {
@@ -166,53 +167,12 @@ export class ReplaceModal extends Modal {
 		}
 	}
 
-	private findInEditor(editor: Editor): { pos: number; length: number }[] {
-		const content = editor.getValue();
-		// console.log("Content being searched:", content); // 添加内容输出
-		const matches: { pos: number; length: number }[] = [];
-		let match;
+	private findInEditor(editor: Editor): MatchResult[] {
+		return findInEditor(editor, this.searchTerm, this.useRegex);
+	}
 
-		if (this.useRegex) {
-			console.log("Creating regex with:", this.searchTerm);
-			try {
-				const regex = new RegExp(this.searchTerm, "gm"); // 添加多行模式
-				// console.log("Regex flags:", regex.flags); // 检查标志
-
-				let lastIndex = 0;
-				while ((match = regex.exec(content)) !== null) {
-					// console.log(
-					// 	"Match found at:",
-					// 	match.index,
-					// 	"Content:",
-					// 	match[0]
-					// );
-					matches.push({
-						pos: match.index,
-						length: match[0].length,
-					});
-
-					// 防止无限循环
-					if (match.index === regex.lastIndex) {
-						regex.lastIndex++;
-					}
-					lastIndex = regex.lastIndex;
-				}
-				console.log("Total matches:", matches.length);
-			} catch (e) {
-				console.error("Regex error:", e);
-				new Notice("Invalid regular expression: " + e.message);
-			}
-		} else {
-			let pos = 0;
-			while ((pos = content.indexOf(this.searchTerm, pos)) !== -1) {
-				matches.push({
-					pos: pos,
-					length: this.searchTerm.length,
-				});
-				pos += this.searchTerm.length;
-			}
-		}
-		return matches;
+	private scrollToMatch(editor: Editor, pos: number, length: number) {
+		scrollToMatch(editor, pos, length);
 	}
 
 	private replaceNext() {
@@ -251,18 +211,6 @@ export class ReplaceModal extends Modal {
 		this.updateCount();
 	}
 
-	private scrollToMatch(editor: Editor, pos: number, length: number) {
-		try {
-			const from = editor.offsetToPos(pos);
-			const to = editor.offsetToPos(pos + length);
-			editor.setSelection(from, to);
-			editor.scrollIntoView({ from, to });
-		} catch (error) {
-			console.error("Error scrolling to match:", error);
-			new Notice("Failed to scroll to the match.");
-		}
-	}
-
 	private updateCount() {
 		if (this.countSetting) {
 			const countText =
@@ -279,32 +227,59 @@ export class ReplaceModal extends Modal {
 
 	private replaceAll() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (activeView && this.searchTerm) {
-			let text = activeView.editor.getValue();
+		if (!activeView || !this.searchTerm.trim()) {
+			new Notice("Please enter a search term");
+			return;
+		}
 
-			try {
-				if (this.useRegex) {
-					text = text.replace(
-						new RegExp(this.searchTerm, "g"),
-						this.replaceTerm
-					);
-				} else {
-					const escaped = this.searchTerm.replace(
-						/[.*+?^${}()|[\]\\]/g,
-						"\\$&"
-					);
-					text = text.replace(
-						new RegExp(escaped, "g"),
-						this.replaceTerm
-					);
-				}
+		let text = activeView.editor.getValue();
+		let replacementCount = 0;
 
+		try {
+			if (this.useRegex) {
+				// console.log("Using regex with pattern:", this.searchTerm);
+				// 添加多行模式标志'm'
+				const regex = new RegExp(this.searchTerm, "gm");
+				// console.log("Regex flags:", regex.flags);
+
+				// 先查找所有匹配项
+				const matches = [...text.matchAll(regex)];
+				console.log("Matches found:", matches);
+				replacementCount = matches.length;
+
+				// 执行替换
+				text = text.replace(regex, (match) => {
+					// 自定义替换逻辑
+					if (match.startsWith("g") && match.length > 1) {
+						return "o" + match.substring(1);
+					}
+					return this.replaceTerm;
+				});
+				// console.log("Text after replacement:", text);
+			} else {
+				const escaped = this.searchTerm.replace(
+					/[.*+?^${}()|[\]\\]/g,
+					"\\$&"
+				);
+				const regex = new RegExp(escaped, "g");
+				replacementCount = (text.match(regex) || []).length;
+				text = text.replace(regex, this.replaceTerm);
+			}
+
+			if (replacementCount > 0) {
 				activeView.editor.setValue(text);
 				this.plugin.settings.useRegex = this.useRegex;
 				this.plugin.saveSettings();
-			} catch (e) {
-				console.error("Replace error:", e);
 			}
+
+			// 更新匹配结果和计数
+			this.matches = this.findInEditor(activeView.editor);
+			this.updateCount();
+
+			new Notice(`Replaced ${replacementCount} occurrences`);
+		} catch (e) {
+			console.error("Replace error:", e);
+			new Notice(`Replace error: ${e.message}`);
 		}
 	}
 
