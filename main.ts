@@ -14,6 +14,8 @@ import { FindModal } from "src/modal/FindModal";
 import { ReplaceModal } from "src/modal/ReplaceModal";
 import { FindReplaceSettingTab } from "src/tab/FindReplaceSettingTab";
 
+import "src/modal/findmodal.css";
+
 // // 添加 Plugin 类的类型声明
 // declare module "obsidian" {
 // 	interface Plugin {
