@@ -1,4 +1,4 @@
-import { Editor } from "obsidian";
+import { App, Editor, MarkdownView } from "obsidian";
 
 declare module "obsidian" {
 	interface Editor {
