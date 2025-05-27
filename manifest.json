@@ -1,11 +1,11 @@
 {
 	"id": "find-replace-plugin",
-	"name": "find replace Plugin",
-	"version": "1.0.1",
-	"minAppVersion": "0.15.0",
+	"name": "find and replace Plugin",
+	"version": "1.0.2",
+	"minAppVersion": "1.8.10",
 	"description": "just find and replace something in obsidian file.",
 	"author": "ztcheck",
-	"authorUrl": "https://obsidian.md",
+	"authorUrl": "https://github.com/gmcheck/obsidian-replace-plugin",
 	"fundingUrl": "https://obsidian.md/pricing",
 	"isDesktopOnly": false
 }

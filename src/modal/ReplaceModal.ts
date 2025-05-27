@@ -3,7 +3,7 @@ import type FindReplacePlugin from "main";
 import { findInEditor, scrollToMatch, MatchResult } from "../common/textUtils";
 import { BaseModal } from './BaseModal';
 import { HighlightManager } from '../common/highlightManager';
-import { ExecException } from "child_process";
+
 
 // 修改类定义，添加高亮管理属性
 // 修改类定义，继承 BaseModal
@@ -212,7 +212,7 @@ export class ReplaceModal extends BaseModal {
 		}
 
 		new Notice(`Replaced ${replacementCount} occurrences`);
-        } catch (e: ExecException) {
+        } catch (e: Error) {
             console.error("Replace error:", e);
             new Notice(`Replace error: ${e.message}`);
         }

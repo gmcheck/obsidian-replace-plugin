@@ -37,7 +37,7 @@ export class FindModal extends BaseModal {
 
 		// 添加可拖动标题栏
 		const titleEl = contentEl.createDiv({ cls: "modal-title" });
-		titleEl.createEl("h2", { text: "Enhanced Find in File" });
+		titleEl.createEl("h2", { text: "Find in File" });
 
 		// 创建内容容器
 		const bodyEl = contentEl.createDiv({ cls: "modal-content" });
