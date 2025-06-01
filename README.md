@@ -3,15 +3,15 @@ Support:
   - find in file with regex or not.
   - replace in file with regex or not.
 
-查找：查找全部、查找上一个、查找下一个、查找进度显示
-替换：查找全部、替换下一个、替换全部、替换下一个时替换进度显示
-使用方法：
-  在obsidian的 第三方插件 选项卡中，关闭 安全模式。
-  在当前 {你自己的vault}/.obsidian/plugins 目录下，新建插件目录 obsidian-replace-plugin
-  复制下面的文件到上述目录中。
-  重启obsidian，第三方插件 选项卡启用 find and replace 插件。
-
-
+查找：查找全部、查找上一个、查找下一个、查找进度显示  
+替换：查找全部、替换下一个、替换全部、替换下一个时替换进度显示  
+使用方法：  
+  在obsidian的 第三方插件 选项卡中，关闭 安全模式。  
+  在当前 {你自己的vault}/.obsidian/plugins 目录下，新建插件目录 obsidian-replace-plugin  
+  复制下面的文件到上述目录中。  
+  重启obsidian，第三方插件 选项卡启用 find and replace 插件。  
+  
+  
 
 Bellow is the original official documentation.
 # Obsidian Sample Plugin
