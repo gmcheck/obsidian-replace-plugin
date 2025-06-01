@@ -1,14 +1,15 @@
 import { App, Modal, Setting, Notice, Editor, MarkdownView } from "obsidian";
 import { findInEditor, scrollToMatch, MatchResult } from "../common/textUtils";
-import { HighlightManager } from '../common/highlightManager'; // 假设存在高亮管理类
+import { HighlightManager } from "../common/highlightManager";
 
 export class BaseModal extends Modal {
-    searchTerm: string; // 搜索词
-    useRegex: boolean;
-    matches: { pos: number; length: number }[] = [];
-    highlightManager: HighlightManager; 
-	contentArray: {pos:number, text: string}[] = []; // 用于存储匹配的文本内容
-    modalStyle = `
+	searchTerm: string;
+	useRegex: boolean;
+	matches: MatchResult[] = [];
+	lastHighlightedMatches: MatchResult[] = []; // 新增
+	highlightManager: HighlightManager;
+	selectedRange: { from: any; to: any } | null = null;
+	modalStyle = `
     .find-modal {
         position: absolute;
         min-width: 300px;
@@ -56,86 +57,168 @@ export class BaseModal extends Modal {
     }
     `;
 
-    constructor(app: App, useRegex: boolean, searchTerm:string) {
-        super(app);
-        this.useRegex = useRegex;
-        this.searchTerm = searchTerm;
-        this.searchTerm = this.searchTerm.trim(); // 去除开头和结尾的空白字符
-        this.highlightManager = new HighlightManager(); // 初始化高亮管理类
-    }
+	constructor(app: App, useRegex: boolean, searchTerm: string) {
+		super(app);
+		this.useRegex = useRegex;
+		this.searchTerm = searchTerm.trim();
+		this.highlightManager = new HighlightManager();
+	}
 
-    protected makeDraggable(handle: HTMLElement) {
-        let pos1 = 0,
-            pos2 = 0,
-            pos3 = 0,
-            pos4 = 0;
+	protected makeDraggable(handle: HTMLElement) {
+		let pos1 = 0,
+			pos2 = 0,
+			pos3 = 0,
+			pos4 = 0;
 
-        handle.onmousedown = (e) => {
-            e.preventDefault();
-            pos3 = e.clientX;
-            pos4 = e.clientY;
-            document.onmouseup = closeDragElement;
-            document.onmousemove = elementDrag;
-        };
+		handle.onmousedown = (e) => {
+			e.preventDefault();
+			pos3 = e.clientX;
+			pos4 = e.clientY;
+			document.onmouseup = closeDragElement;
+			document.onmousemove = elementDrag;
+		};
 
-        const elementDrag = (e: MouseEvent) => {
-            e.preventDefault();
-            pos1 = pos3 - e.clientX;
-            pos2 = pos4 - e.clientY;
-            pos3 = e.clientX;
-            pos4 = e.clientY;
+		const elementDrag = (e: MouseEvent) => {
+			e.preventDefault();
+			pos1 = pos3 - e.clientX;
+			pos2 = pos4 - e.clientY;
+			pos3 = e.clientX;
+			pos4 = e.clientY;
 
-            this.modalEl.style.top = this.modalEl.offsetTop - pos2 + "px";
-            this.modalEl.style.left = this.modalEl.offsetLeft - pos1 + "px";
-        };
+			this.modalEl.style.top = this.modalEl.offsetTop - pos2 + "px";
+			this.modalEl.style.left = this.modalEl.offsetLeft - pos1 + "px";
+		};
 
-        const closeDragElement = () => {
-            document.onmouseup = null;
-            document.onmousemove = null;
-        };
-    }
+		const closeDragElement = () => {
+			document.onmouseup = null;
+			document.onmousemove = null;
+		};
+	}
 
-    protected findAllMatches(editor: Editor) {
-        if (!editor) {
-            new Notice("Please enter a search term");
-            return [];
-        }
-        this.matches = findInEditor(editor, this.searchTerm, this.useRegex);
-        if (this.matches.length === 0) {
-            new Notice('No matches found');
-            return [];
-        }
-        return this.matches;
-    }
-
-    closeTab(activeView:MarkdownView | null) {
-        if (activeView) {
-            // 清除之前的高亮
-            if(this.contentArray.length > 0) {
-                this.highlightManager.clearHighlights(activeView.editor, this.contentArray);
-            }
-            // 初始化 this.contentArray
-            this.contentArray = [];
-        }
-    }
-    
 	/**
-	 * 生成需要高亮的内容数组。
-	 * 赋值给 this.contentArray。
-	 * @param matches - 匹配项数组。
-	 * @param activeView - 当前活动的 MarkdownView。
-	 * 
-	 **/
-	protected generateContentArray(matches: any[], activeView: any){
-		this.contentArray = matches.map(({ pos, length }) => {
-			const text = activeView.editor.getRange({
-				line: activeView.editor.offsetToPos(pos).line,
-				ch: activeView.editor.offsetToPos(pos).ch
-			}, {
-				line: activeView.editor.offsetToPos(pos + length).line,
-				ch: activeView.editor.offsetToPos(pos + length).ch
-			});
-			return { pos, text };
-		});
+	 * 获取选中文本并填入搜索框，同时记录选区范围
+	 */
+	protected useSelectedText(inputSelector = 'input[type="text"]') {
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!activeView) return;
+		const selection = activeView.editor.getSelection();
+		if (selection) {
+			this.searchTerm = selection;
+			const input = this.containerEl.querySelector(inputSelector);
+			if (input) (input as HTMLInputElement).value = selection;
+			this.selectedRange = {
+				from: activeView.editor.getCursor("from"),
+				to: activeView.editor.getCursor("to"),
+			};
+		} else {
+			this.selectedRange = null;
+		}
+	}
+
+	/**
+	 * 只记录选区范围，不修改 searchTerm
+	 */
+	protected useSelectedTextRangeOnly() {
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!activeView) return;
+		const selection = activeView.editor.getSelection();
+		if (selection) {
+			this.selectedRange = {
+				from: activeView.editor.getCursor("from"),
+				to: activeView.editor.getCursor("to"),
+			};
+		} else {
+			this.selectedRange = null;
+		}
+	}
+
+	/**
+	 * 查找所有匹配项，仅在选区查找（如有选区），并为每个 MatchResult 添加 content 字段
+	 */
+	protected findAllMatches(editor: Editor): MatchResult[] {
+		if (!editor) {
+			new Notice("Please enter a search term");
+			return [];
+		}
+		let matches: MatchResult[];
+		if (this.selectedRange) {
+			const fromOffset = editor.posToOffset(this.selectedRange.from);
+			const toOffset = editor.posToOffset(this.selectedRange.to);
+			const content = editor.getValue().slice(fromOffset, toOffset);
+			matches = findInEditor(
+				{
+					...editor,
+					getValue: () => content,
+				} as Editor,
+				this.searchTerm,
+				this.useRegex,
+			).map((m) => ({
+				...m,
+				pos: m.pos + fromOffset,
+				content: content.slice(m.pos, m.pos + m.length),
+			}));
+		} else {
+			const fullContent = editor.getValue();
+			matches = findInEditor(editor, this.searchTerm, this.useRegex).map(
+				(m) => ({
+					...m,
+					content: fullContent.slice(m.pos, m.pos + m.length),
+				}),
+			);
+		}
+		this.matches = matches;
+		if (this.matches.length === 0) {
+			new Notice("No matches found");
+			return [];
+		}
+		return this.matches;
+	}
+
+	/**
+	 * 高亮所有匹配项，并记录本轮高亮
+	 */
+	highlightAll(editor: Editor) {
+		if (this.matches.length > 0) {
+			this.highlightManager.addHighlight(
+				editor,
+				this.matches.map((m) => ({
+					pos: m.pos,
+					length: m.length,
+					content: m.content,
+				})),
+			);
+			this.lastHighlightedMatches = [...this.matches]; // 记录本轮高亮
+		}
+	}
+
+	/**
+	 * 清除所有高亮（只清除本轮高亮）
+	 */
+	clearAllHighlights(editor: Editor, matches?: MatchResult[]) {
+		const toClear = matches ?? this.lastHighlightedMatches;
+		if (toClear && toClear.length > 0) {
+			this.highlightManager.clearHighlights(
+				editor,
+				toClear.map((m) => ({
+					pos: m.pos,
+					length: m.length,
+					content: m.content,
+				})),
+			);
+		}
+	}
+
+	/**
+	 * 关闭时清除高亮
+	 */
+	closeTab(activeView: MarkdownView | null) {
+		if (activeView) {
+			this.clearAllHighlights(
+				activeView.editor,
+				this.lastHighlightedMatches,
+			);
+			this.matches = [];
+			this.lastHighlightedMatches = [];
+		}
 	}
 }
