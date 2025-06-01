@@ -1,29 +1,19 @@
-import {
-	App,
-	MarkdownView,
-	Modal,
-	Setting,
-	Notice,
-	Editor,
-	EditorPosition,
-} from "obsidian";
-
-import { findInEditor, scrollToMatch, MatchResult } from "../common/textUtils";
-import { HighlightManager } from '../common/highlightManager'; // 假设存在高亮管理类
-import { BaseModal } from './BaseModal';
+import { App, MarkdownView, Setting, Notice, Editor } from "obsidian";
+import { BaseModal } from "./BaseModal";
+import { scrollToMatch } from "../common/textUtils";
 
 export class FindModal extends BaseModal {
-	searchTerm: string = "";
-	useRegex: boolean;
-	matches: { pos: number; length: number }[] = [];
 	currentIndex: number = -1;
 	countSetting: Setting;
-	highlightManager: HighlightManager; // 添加属性声明
-	contentArray: {pos:number, text: string}[] = []; // 用于存储匹配的文本内容
+	useSelectedTextFlag: boolean = false;
+	lastHighlightedMatches: any[] = [];
 
-	constructor(app: App, private plugin: any, searchTerm: string) {
+	constructor(
+		app: App,
+		private plugin: any,
+		searchTerm: string,
+	) {
 		super(app, plugin?.settings?.useRegex || false, searchTerm);
-		this.highlightManager = new HighlightManager(); // 初始化高亮管理类
 	}
 
 	onOpen() {
@@ -31,7 +21,6 @@ export class FindModal extends BaseModal {
 		const styleEl = document.createElement("style");
 		styleEl.textContent = this.modalStyle;
 		document.head.appendChild(styleEl);
-
 		const { contentEl } = this;
 		contentEl.empty();
 
@@ -42,44 +31,59 @@ export class FindModal extends BaseModal {
 		// 创建内容容器
 		const bodyEl = contentEl.createDiv({ cls: "modal-content" });
 
-		// 将原有UI元素添加到bodyEl中而不是contentEl
 		new Setting(bodyEl)
 			.setName("Search Term")
 			.addText((text) =>
 				text
 					.setPlaceholder("Enter search term")
-					.onChange((value) => (this.searchTerm = value.trim()))
+					.onChange((value) => (this.searchTerm = value.trim())),
 			);
 
-		new Setting(contentEl)
+		const optionsRow = contentEl.createDiv({ cls: "options-row" });
+		this.useRegex = false;
+		this.useSelectedTextFlag = false;
+
+		new Setting(optionsRow)
 			.setName("Use Regular Expression")
 			.addToggle((toggle) =>
-				toggle
-					.setValue(this.useRegex)
-					.onChange((value) => (this.useRegex = value))
+				toggle.setValue(this.useRegex).onChange((value) => {
+					this.useRegex = value;
+				}),
+			);
+
+		new Setting(optionsRow)
+			.setName("Use Selected Text")
+			.addToggle((toggle) =>
+				toggle.setValue(this.useSelectedTextFlag).onChange((value) => {
+					this.useSelectedTextFlag = value;
+					if (value) {
+						this.useSelectedTextRangeOnly();
+					} else {
+						this.selectedRange = null;
+					}
+				}),
 			);
 
 		// 创建按钮容器
 		const buttonRow = contentEl.createDiv({ cls: "button-row" });
-
-		// 将查找按钮放在同一行
 		new Setting(buttonRow)
 			.addButton((btn) =>
-				btn.setButtonText("Find All").onClick(() => this.findAll())
+				btn.setButtonText("Find All").onClick(() => this.findAll()),
 			)
 			.addButton((btn) =>
-				btn.setButtonText("Previous").onClick(() => this.findPrevious())
+				btn
+					.setButtonText("Previous")
+					.onClick(() => this.findPrevious()),
 			)
 			.addButton((btn) =>
 				btn
 					.setButtonText("Next")
 					.setCta()
-					.onClick(() => this.findNext())
+					.onClick(() => this.findNext()),
 			);
 
-		// 单独一行显示计数
 		this.countSetting = new Setting(contentEl).addButton((btn) =>
-			btn.setButtonText("Count: 0").setDisabled(true)
+			btn.setButtonText("Count: 0").setDisabled(true),
 		);
 
 		// 启用模态框拖动
@@ -89,32 +93,33 @@ export class FindModal extends BaseModal {
 		this.makeDraggable(titleEl);
 	}
 
+	protected findAllMatches(editor: Editor) {
+		if (this.useSelectedTextFlag) {
+			// 只在未设置选区时才设置一次
+			if (!this.selectedRange) {
+				this.useSelectedTextRangeOnly();
+			}
+		} else {
+			this.selectedRange = null;
+		}
+		return super.findAllMatches(editor);
+	}
+
 	private findAll() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView) {
 			new Notice("Please enter a search term");
 			return;
 		}
-		// 清除高亮匹配的文本内容，可能多次执行
-		if(this.contentArray.length > 0) {
-			this.highlightManager.clearHighlights(activeView.editor, this.contentArray);
-		}
-
-		this.matches = super.findAllMatches(activeView.editor);
-		this.currentIndex = -1; // 重置索引为-1，以便下一次从第一个匹配项开始search
-        this.updateCount();
-		this.generateContentArray(this.matches, activeView);
+		this.clearAllHighlights(activeView.editor, this.lastHighlightedMatches);
+		this.matches = this.findAllMatches(activeView.editor);
+		this.currentIndex = -1;
+		this.updateCount();
+		this.highlightAll(activeView.editor);
+		this.lastHighlightedMatches = [...this.matches];
 		if (this.matches.length === 0) {
 			new Notice("No matches found");
-			return
 		}
-
-		this.highlightManager.addHighlight(activeView.editor, this.contentArray);
-
-		// 高亮后重新计算匹配项
-		this.matches = super.findAllMatches(activeView.editor);
-		console.log("this.new.matches", this.matches)
-		this.generateContentArray(this.matches, activeView);
 	}
 
 	private findNext() {
@@ -123,50 +128,44 @@ export class FindModal extends BaseModal {
 			new Notice("Please enter a search term");
 			return;
 		}
-		// 获取所有匹配内容
-		if(this.matches.length == 0 && this.currentIndex == -1) {
-			this.findAll()
+		if (this.matches.length == 0 && this.currentIndex == -1) {
+			this.findAll();
 		}
-		console.log("this.currentIndex", this.currentIndex)
 		this.currentIndex = (this.currentIndex + 1) % this.matches.length;
-		const match = this.contentArray[this.currentIndex];
-		if (!match) {
-            return;
-        }
-		console.log("matches", this.matches)
-		console.log("this.currentIndex", this.currentIndex)
-		console.log("match", match)
-		this.scrollToMatch(activeView.editor, match.pos, match.text.length);
+		const match = this.matches[this.currentIndex];
+		if (!match) return;
+		this.scrollToMatch(activeView.editor, match.pos, match.content.length);
 		this.updateCount();
 	}
 
 	private findPrevious() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!activeView ||!this.searchTerm.trim()) {
+		if (!activeView || !this.searchTerm.trim()) {
 			new Notice("Please enter a search term");
 			return;
 		}
-		// 获取所有匹配内容
-		if(this.matches.length == 0 && this.currentIndex == -1) {
-			this.findAll()
+		if (this.matches.length == 0 && this.currentIndex == -1) {
+			this.findAll();
 		}
-		this.currentIndex = (this.currentIndex - 1 + this.matches.length) % this.matches.length;
-		const match = this.contentArray[this.currentIndex];
-		this.scrollToMatch(activeView.editor, match.pos, match.text.length);
+		this.currentIndex =
+			(this.currentIndex - 1 + this.matches.length) % this.matches.length;
+		const match = this.matches[this.currentIndex];
+		this.scrollToMatch(activeView.editor, match.pos, match.content.length);
 		this.updateCount();
 	}
 
 	private scrollToMatch(editor: Editor, pos: number, length: number) {
+		// 可直接用 scrollToMatch 工具函数
 		scrollToMatch(editor, pos, length);
 	}
-	
+
 	private updateCount(count = this.currentIndex + 1) {
 		if (this.countSetting) {
 			const countText =
 				this.matches.length > 0
 					? `Count: ${this.matches.length} (${count}/${this.matches.length})`
 					: `Count: ${this.matches.length}`;
-				this.countSetting.controlEl
+			this.countSetting.controlEl
 				.querySelector("button")!
 				.setText(countText);
 		}
@@ -177,7 +176,12 @@ export class FindModal extends BaseModal {
 	 */
 	onClose(): void {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		super.closeTab(activeView);
+		if (activeView) {
+			this.clearAllHighlights(
+				activeView.editor,
+				this.lastHighlightedMatches,
+			);
+		}
+		super.onClose();
 	}
-	
 }

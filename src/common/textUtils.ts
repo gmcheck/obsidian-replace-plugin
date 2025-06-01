@@ -1,56 +1,59 @@
 import { Editor } from "obsidian";
 
 export interface MatchResult {
-	pos: number;
-	length: number;
+    pos: number;
+    length: number;
+    content: string;
 }
 
 export function findInEditor(
-	editor: Editor,
-	searchTerm: string,
-	useRegex: boolean
+    editor: Editor,
+    searchTerm: string,
+    useRegex: boolean,
 ): MatchResult[] {
-	const content = editor.getValue();
-	const matches: MatchResult[] = [];
-	let match;
+    const content = editor.getValue();
+    const matches: MatchResult[] = [];
+    let match;
 
-	if (useRegex) {
-		try {
-			const regex = new RegExp(searchTerm, "gm");
-			let lastIndex = 0;
+    if (useRegex) {
+        try {
+            const regex = new RegExp(searchTerm, "gm");
+            let lastIndex = 0;
 
-			while ((match = regex.exec(content)) !== null) {
-				matches.push({
-					pos: match.index,
-					length: match[0].length,
-				});
+            while ((match = regex.exec(content)) !== null) {
+                matches.push({
+                    pos: match.index,
+                    length: match[0].length,
+                    content: match[0], // 修复：直接赋值匹配内容
+                });
 
-				if (match.index === regex.lastIndex) {
-					regex.lastIndex++;
-				}
-				lastIndex = regex.lastIndex;
-			}
-		} catch (e) {
-			console.error("Regex error:", e);
-			throw new Error("Invalid regular expression");
-		}
-	} else {
-		let pos = 0;
-		while ((pos = content.indexOf(searchTerm, pos)) !== -1) {
-			matches.push({
-				pos: pos,
-				length: searchTerm.length,
-			});
-			pos += searchTerm.length;
-		}
-	}
-	return matches;
+                if (match.index === regex.lastIndex) {
+                    regex.lastIndex++;
+                }
+                lastIndex = regex.lastIndex;
+            }
+        } catch (e) {
+            console.error("Regex error:", e);
+            throw new Error("Invalid regular expression");
+        }
+    } else {
+        let pos = 0;
+        while ((pos = content.indexOf(searchTerm, pos)) !== -1) {
+            matches.push({
+                pos: pos,
+                length: searchTerm.length,
+                content: searchTerm, // 修复：直接赋值匹配内容
+            });
+            pos += searchTerm.length;
+        }
+    }
+    return matches;
 }
 
 export function scrollToMatch(
 	editor: Editor,
 	pos: number,
-	length: number
+	length: number,
 ): void {
 	try {
 		const from = editor.offsetToPos(pos);
