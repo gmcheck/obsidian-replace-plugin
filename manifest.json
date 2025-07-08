@@ -1,7 +1,7 @@
 {
 	"id": "find-replace-plugin",
 	"name": "find and replace Plugin",
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"minAppVersion": "1.8.10",
 	"description": "just find and replace something in obsidian file.",
 	"author": "ztcheck",
